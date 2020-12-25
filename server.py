@@ -1,10 +1,13 @@
 from rdt import RDTSocket
-from socket import socket, AF_INET, SOCK_DGRAM, SOCK_STREAM
+import pysnooper
+#from socket import socket, AF_INET, SOCK_DGRAM, SOCK_STREAM
 import time
 
-if __name__=='__main__':
+@pysnooper.snoop()
+
+def main():
     # server = RDTSocket()
-    server = RDTSocket(AF_INET, SOCK_STREAM) # check what python socket does
+    server = RDTSocket() # check what python socket does
     server.bind(('127.0.0.1', 9999))
     #server.listen(0) # check what python socket does
 
@@ -22,3 +25,6 @@ if __name__=='__main__':
         '''
         conn.close()
         print(f'connection finished in {time.perf_counter()-start}s')
+
+if __name__=='__main__':
+    main()

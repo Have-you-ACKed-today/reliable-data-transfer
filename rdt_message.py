@@ -8,6 +8,7 @@ HEADER_LENGTH = 14
 
 class RdtMessage(object):
     def __init__(self, flags, seq, seq_ack, length=-1, checksum=-1, payload="", eof=False, syn=False, fin=False, ack=False):
+
         """
         constructor of RdtMessage
         :param flags: 5 bits reserved, 1 bit syn, 1 bit fin, 1 bit ack, 1 byte

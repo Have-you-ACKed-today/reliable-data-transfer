@@ -10,7 +10,7 @@ WINDOW_SIZE = 8
 PACKET_SIZE = 8 + HEADER_LENGTH + PAYLOAD_SIZE
 TIME_OUT = 2000
 
-
+## our socket rdt
 class RDTSocket(UnreliableSocket):
     """
     The functions with which you are to build your RDT.
