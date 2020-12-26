@@ -10,6 +10,7 @@ WINDOW_SIZE = 8
 PACKET_SIZE = 8 + HEADER_LENGTH + PAYLOAD_SIZE
 TIME_OUT = 2000
 
+
 ## our socket rdt
 class RDTSocket(UnreliableSocket):
     """
@@ -21,7 +22,7 @@ class RDTSocket(UnreliableSocket):
     You can set the mode of the socket.
     -   settimeout(timeout)
     -   setblocking(flag)
-    By default, a socket is created in the blocking mode.
+    By default, a socket is created in the blocking mode. 
     https://docs.python.org/3/library/socket.html#socket-timeouts
 
     """
@@ -46,7 +47,7 @@ class RDTSocket(UnreliableSocket):
         #                             END OF YOUR CODE                              #
         #############################################################################
 
-    def accept(self):
+    def accept(self) -> ('RDTSocket', (str, int)):
         """
         Accept a connection. The socket must be bound to an address and listening for
         connections. The return value is a pair (conn, address) where conn is a new
@@ -146,7 +147,7 @@ class RDTSocket(UnreliableSocket):
         if self.debug:
             print('syn: ', syn.to_string())
 
-        # 第一次握手, fin=1
+        # 第一次握手, syn=1
         self.sendto(syn.to_byte(), address)
 
         # 接收对方发来的syn包，只有报文头
@@ -200,13 +201,18 @@ class RDTSocket(UnreliableSocket):
                 continue
             # 解析
             msg, corrupt = unpack(packet)
-            print('msg: ', msg.to_string(), 'corrupt: ', corrupt, '', 'expect: ', self.seq_ack)
+            print('msg: ', msg.to_string())
+            print('corrupt: ', corrupt)
+            print('expect: ', self.seq_ack)
             # 如果未受损且是期待的序号，则提交数据
             if not corrupt and msg.seq == self.seq_ack:
                 # data = msg.payload[:min(msg.length, bufsize)]
-                data = packet[8 + HEADER_LENGTH:]
+                data = packet[HEADER_LENGTH:]  # window size is not received! not 8+HEADER_LENGTH
                 eof = msg.is_eof_set()
-                ack = make_ack(self.seq_ack)
+
+                # ack = make_ack(self.seq_ack)
+                ack = RdtMessage(0x0, self.seq, self.seq_ack, ack=True)
+
                 print('make ack =', self.seq_ack)
                 self.sendto(ack.to_byte(), self._send_to)
                 self.seq_ack += 1
@@ -215,7 +221,10 @@ class RDTSocket(UnreliableSocket):
                 return None, None
             else:
                 print('make ack =', self.seq_ack - 1)
-                ack = make_ack(self.seq_ack - 1)
+
+                # ack = make_ack(self.seq_ack - 1)
+                ack = RdtMessage(0x0, self.seq, self.seq_ack - 1, ack=True)
+
                 self.sendto(ack.to_byte(), self._send_to)
         return data, eof
 
@@ -261,12 +270,12 @@ class RDTSocket(UnreliableSocket):
         timeout = self.gettimeout()
         if timeout is None:
             timeout = TIME_OUT
-        self.timer = threading.Timer((timeout / 1000.0), self._timeout)
+        self.timer = threading.Timer((timeout / 1000.0), self._timeout, args=[self.seq])
         self.timer.start()
 
-    def _timeout(self):
+    def _timeout(self, cur_seq):
         if self.debug:
-            print('timeout')
+            print('timeout on', cur_seq)
 
         self.mutex.acquire()
         if self.seq < self.next_seq:
@@ -280,7 +289,7 @@ class RDTSocket(UnreliableSocket):
 
     def _recv_ack(self):
         while self.is_sender:
-            print('recv running')
+            print('recv ack running')
             packet, addr = self.recvfrom(PACKET_SIZE)
             if not addr == self._recv_from:
                 if self.debug:
@@ -315,14 +324,15 @@ class RDTSocket(UnreliableSocket):
 
         parts = make_data_parts(bytes, PAYLOAD_SIZE)
         if self.debug:
-            print('get', len(parts))
+            print('get', len(parts), 'parts')
         for part in parts:
             while True:
                 self.mutex.acquire()
                 # if self.debug:
                 #     print('seq =', self.seq, 'next_seq =', self.next_seq)
                 if self.next_seq < self.seq + WINDOW_SIZE:
-                    packet = RdtMessage(0x0, self.next_seq, 0, payload=part.decode(), eof=(part == parts[-1]))
+                    packet = RdtMessage(0x0, self.next_seq, self.seq_ack, payload=part.decode(),
+                                        eof=(part == parts[-1]))
                     self.window[self.next_seq] = packet
                     self.sendto(packet.to_byte(), self._send_to)
                     if self.debug:
@@ -376,4 +386,3 @@ class RDTSocket(UnreliableSocket):
 You can define additional functions and classes to do thing such as packing/unpacking packets, or threading.
 
 """
-

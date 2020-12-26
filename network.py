@@ -49,8 +49,9 @@ class Server(ThreadingUDPServer):
         to = bytes_to_addr(data[:8])
         print(client_address, to)
         print(unpack(data[8:])[0].to_string())
+        print(unpack(data[8:])[0].payload)
         corrupt_data = data[8:]
-        if not unpack(data[8:])[0].is_syn_set() and random.randint(0, 4) == 1:
+        if not unpack(data[8:])[0].is_syn_set() and random.randint(0, 5) == 1:
             print('corrupt')
             corrupt_data = corrupt(corrupt_data)
         socket.sendto(addr_to_bytes(client_address) + corrupt_data, to)

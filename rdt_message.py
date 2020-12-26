@@ -7,7 +7,8 @@ HEADER_LENGTH = 14
 
 
 class RdtMessage(object):
-    def __init__(self, flags, seq, seq_ack, length=-1, checksum=-1, payload="", eof=False, syn=False, fin=False, ack=False):
+    def __init__(self, flags, seq, seq_ack, length=-1, checksum=-1, payload="", eof=False, syn=False, fin=False,
+                 ack=False):
 
         """
         constructor of RdtMessage
@@ -33,7 +34,8 @@ class RdtMessage(object):
         self.length = len(payload) if length == -1 else length
         if checksum != -1:
             self.checksum = checksum
-        self.checksum = calc_checksum(struct.pack(rdt_format, self.flags, seq, seq_ack, self.length, 0) + payload.encode())
+        self.checksum = calc_checksum(
+            struct.pack(rdt_format, self.flags, seq, seq_ack, self.length, 0) + payload.encode())
 
     def to_byte(self):
         """
@@ -42,7 +44,8 @@ class RdtMessage(object):
         """
         # print('packing: ', self.flags, self.seq, self.seq_ack, self.length, self.checksum)
         # print('payload: ', self.payload)
-        return struct.pack(rdt_format, self.flags, self.seq, self.seq_ack, self.length, self.checksum) + self.payload.encode()
+        return struct.pack(rdt_format, self.flags, self.seq, self.seq_ack, self.length,
+                           self.checksum) + self.payload.encode()
 
     def is_eof_set(self):
         return self.flags & 0b1000 != 0
@@ -70,7 +73,8 @@ class RdtMessage(object):
 
     def to_string(self):
         return 'eof={7}, syn={0}, fin={1}, ack={2}, seq={3}, seq_ack={4}, len={5}, checksum={6}'.format(
-            self.is_syn_set(), self.is_fin_set(), self.is_ack_set(), self.seq, self.seq_ack,self.length, self.checksum, self.is_eof_set()
+            self.is_syn_set(), self.is_fin_set(), self.is_ack_set(), self.seq, self.seq_ack, self.length, self.checksum,
+            self.is_eof_set()
         )
 
 
@@ -85,7 +89,8 @@ def unpack(bytes_message: bytes):
     # print('unpacked:', flags, seq, seq_ack, length, checksum)
     # assert flags < 6
 
-    real_checksum = calc_checksum(struct.pack(rdt_format, flags, seq, seq_ack, length, 0) + bytes_message[HEADER_LENGTH:])
+    real_checksum = calc_checksum(
+        struct.pack(rdt_format, flags, seq, seq_ack, length, 0) + bytes_message[HEADER_LENGTH:])
     # assert checksum == real_checksum
     corrupt = not checksum == real_checksum
 
@@ -100,6 +105,7 @@ def unpack(bytes_message: bytes):
 
 def make_ack(seq_ack):
     return RdtMessage(0x0, 0, seq_ack, ack=True)
+
 
 # this is just for testing
 if __name__ == "__main__":
