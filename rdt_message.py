@@ -12,7 +12,7 @@ class RdtMessage(object):
 
         """
         constructor of RdtMessage
-        :param flags: 5 bits reserved, 1 bit syn, 1 bit fin, 1 bit ack, 1 byte
+        :param flags: 4 bits reserved, 1 bit eof, 1 bit syn, 1 bit fin, 1 bit ack, 1 byte
         :param seq: sequence number, 4 bytes
         :param seq_ack: ack number, 4 bytes
         :param checksum: checksum, 1 byte
@@ -34,8 +34,9 @@ class RdtMessage(object):
         self.length = len(payload) if length == -1 else length
         if checksum != -1:
             self.checksum = checksum
-        self.checksum = calc_checksum(
-            struct.pack(rdt_format, self.flags, seq, seq_ack, self.length, 0) + payload.encode())
+        else:
+            self.checksum = calc_checksum(
+                struct.pack(rdt_format, self.flags, seq, seq_ack, self.length, 0) + payload.encode())
 
     def to_byte(self):
         """

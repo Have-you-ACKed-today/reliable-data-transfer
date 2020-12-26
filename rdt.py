@@ -1,3 +1,5 @@
+import datetime
+
 from USocket import UnreliableSocket
 from rdt_message import HEADER_LENGTH, RdtMessage, unpack, make_ack
 from utils import make_data_parts
@@ -8,7 +10,7 @@ import random
 PAYLOAD_SIZE = 1024
 WINDOW_SIZE = 8
 PACKET_SIZE = 8 + HEADER_LENGTH + PAYLOAD_SIZE
-TIME_OUT = 2000
+TIME_OUT = 1000
 
 
 ## our socket rdt
@@ -40,6 +42,16 @@ class RDTSocket(UnreliableSocket):
         self.seq_ack = 0  # expected num
         self.next_seq = 0
         self.window = {}
+
+        self.tx_buffer = []
+        self.send_buffer = []
+        self.recv_buffer = []
+        self.rx_buffer = []
+        self.tx_thread = threading.Thread(target=self.tx_function)
+        self.send_thread = threading.Thread(target=self.send_function)
+        self.recv_thread = threading.Thread(target=self.recv_function)
+        self.rx_thread = threading.Thread(target=self.rx_function)
+
         self.is_sender = False
         self.mutex = threading.Lock()
         self.timer = threading.Timer((TIME_OUT / 1000.0), self._timeout)
@@ -120,6 +132,11 @@ class RDTSocket(UnreliableSocket):
         myaddr = self.getsockname()
         self.close()
         conn.bind(myaddr)
+
+        conn.tx_thread.start()
+        conn.send_thread.start()
+        conn.recv_thread.start()
+        conn.rx_thread.start()
         #####
 
         #############################################################################
@@ -184,7 +201,12 @@ class RDTSocket(UnreliableSocket):
 
         if self.debug:
             print('seq =', self.seq, 'seq_ack =', self.seq_ack)
-            print('handshake done')
+            print('handshake done, start Tx Thread')
+
+        self.tx_thread.start()
+        self.send_thread.start()
+        self.recv_thread.start()
+        self.rx_thread.start()
         #############################################################################
         #                             END OF YOUR CODE                              #
         #############################################################################
@@ -244,19 +266,27 @@ class RDTSocket(UnreliableSocket):
         # TODO: YOUR CODE HERE                                                      #
         #############################################################################
 
-        buffer = bytes()
+        # buffer = bytes()
+        # while True:
+        #     part, eof = self._recv()
+        #     if part is None and eof is None:
+        #         self.close()
+        #         return None
+        #     buffer += part
+        #     if len(buffer) >= bufsize:
+        #         data = buffer[:bufsize]
+        #         break
+        #     if eof:
+        #         data = buffer
+        #         break
+
+        data = bytes()
         while True:
-            part, eof = self._recv()
-            if part is None and eof is None:
-                self.close()
-                return None
-            buffer += part
-            if len(buffer) >= bufsize:
-                data = buffer[:bufsize]
-                break
-            if eof:
-                data = buffer
-                break
+            if len(self.rx_buffer) == 0:
+                continue
+            raw, eof = self.rx_buffer.pop(0)
+            data += raw
+            break
 
         #############################################################################
         #                             END OF YOUR CODE                              #
@@ -279,11 +309,11 @@ class RDTSocket(UnreliableSocket):
 
         self.mutex.acquire()
         if self.seq < self.next_seq:
-            print('resend (', self.seq, self.next_seq, ')')
+            print('resend (', self.seq, self.next_seq, ')', 'at', datetime.datetime.now())
             for i in range(self.seq, self.next_seq):
                 packet = self.window[i]
-                self.sendto(packet.to_byte(), self._send_to)
-                print('resend packet: ', packet.to_string())
+                self.sendto(packet, self._send_to)
+                # print('resend packet: ', packet.to_string())
             self._set_timer()
         self.mutex.release()
 
@@ -316,44 +346,51 @@ class RDTSocket(UnreliableSocket):
         #############################################################################
         # TODO: YOUR CODE HERE                                                      #
         #############################################################################
-        if self.debug:
-            print('-------------')
-            print('begin to send')
-        self.is_sender = True
-        threading.Thread(target=self._recv_ack).start()
+
+        # if self.debug:
+        #     print('-------------')
+        #     print('begin to send')
+        # self.is_sender = True
+        # threading.Thread(target=self._recv_ack).start()
+        #
+        # parts = make_data_parts(bytes, PAYLOAD_SIZE)
+        # if self.debug:
+        #     print('get', len(parts), 'parts')
+        # for part in parts:
+        #     while True:
+        #         self.mutex.acquire()
+        #         # if self.debug:
+        #         #     print('seq =', self.seq, 'next_seq =', self.next_seq)
+        #         if self.next_seq < self.seq + WINDOW_SIZE:
+        #             packet = RdtMessage(0x0, self.next_seq, self.seq_ack, payload=part.decode(),
+        #                                 eof=(part == parts[-1]))
+        #             self.window[self.next_seq] = packet
+        #             self.sendto(packet.to_byte(), self._send_to)
+        #             if self.debug:
+        #                 print('send pkt: ', packet.to_string())
+        #             if self.seq == self.next_seq:
+        #                 self._set_timer()
+        #             self.next_seq += 1
+        #             self.mutex.release()
+        #             break
+        #         else:
+        #             self.mutex.release()
+        #             time.sleep(1)
+        #
+        # while True:
+        #     self.mutex.acquire()
+        #     if self.seq == self.next_seq:
+        #         self.is_sender = False
+        #         self.mutex.release()
+        #         break
+        #     self.mutex.release()
+        #     time.sleep(1)
 
         parts = make_data_parts(bytes, PAYLOAD_SIZE)
+        self.tx_buffer.extend(parts)
         if self.debug:
-            print('get', len(parts), 'parts')
-        for part in parts:
-            while True:
-                self.mutex.acquire()
-                # if self.debug:
-                #     print('seq =', self.seq, 'next_seq =', self.next_seq)
-                if self.next_seq < self.seq + WINDOW_SIZE:
-                    packet = RdtMessage(0x0, self.next_seq, self.seq_ack, payload=part.decode(),
-                                        eof=(part == parts[-1]))
-                    self.window[self.next_seq] = packet
-                    self.sendto(packet.to_byte(), self._send_to)
-                    if self.debug:
-                        print('send pkt: ', packet.to_string())
-                    if self.seq == self.next_seq:
-                        self._set_timer()
-                    self.next_seq += 1
-                    self.mutex.release()
-                    break
-                else:
-                    self.mutex.release()
-                    time.sleep(1)
-
-        while True:
-            self.mutex.acquire()
-            if self.seq == self.next_seq:
-                self.is_sender = False
-                self.mutex.release()
-                break
-            self.mutex.release()
-            time.sleep(1)
+            print("put the data into the tx buffer")
+            print("in", len(parts), "parts")
 
         #############################################################################
         #                             END OF YOUR CODE                              #
@@ -380,6 +417,82 @@ class RDTSocket(UnreliableSocket):
 
     def set_recv_from(self, recv_from):
         self._recv_from = recv_from
+
+    def tx_function(self):
+        self.next_seq = self.seq
+        if self.debug:
+            print("Tx thread start")
+        while True:
+            time.sleep(0.01)
+            if len(self.tx_buffer) > 0:
+                self.mutex.acquire()
+                if self.next_seq < self.seq + WINDOW_SIZE:
+                    if self.debug:
+                        print("data get from tx_buffer")
+                    data = self.tx_buffer.pop(0)
+                    self.window[self.next_seq] = data
+                    if self.seq == self.next_seq:
+                        self._set_timer()
+                    packet = RdtMessage(0x0, self.next_seq, self.seq_ack, payload=data.decode())
+                    self.next_seq += 1
+                    self.send_buffer.append(packet)
+            else:
+                packet = RdtMessage(0x0, self.seq, self.seq_ack)
+                self.mutex.acquire()
+                self.send_buffer.append(packet)
+            self.mutex.release()
+
+    def send_function(self):
+        if self.debug:
+            print("Send thread start")
+        while True:
+            time.sleep(0.01)
+            if len(self.send_buffer) > 0:
+                if self.debug:
+                    print("data get from send_buffer")
+                self.mutex.acquire()
+                packet = self.send_buffer.pop(0)
+                self.sendto(packet.to_byte(), self._send_to)
+                self.mutex.release()
+
+    def recv_function(self):
+        if self.debug:
+            print("Recv thread start")
+        while True:
+            time.sleep(0.01)
+            packet, addr = self.recvfrom(PACKET_SIZE)
+            if packet:
+                if self.debug:
+                    print("data get from another host")
+                if not addr == self._recv_from:
+                    if self.debug:
+                        print('recv packet from unknown host, aborted')
+                    continue
+                self.mutex.acquire()
+                self.recv_buffer.append(packet)
+                self.mutex.release()
+
+    def rx_function(self):
+        if self.debug:
+            print("Rx thread start")
+        while True:
+            time.sleep(0.01)
+            self.mutex.acquire()
+            if len(self.recv_buffer) > 0:
+                if self.debug:
+                    print("data get from recv_buffer")
+                packet = self.recv_buffer.pop(0)
+                msg, corrupt = unpack(packet)
+                if not corrupt and msg.seq == self.seq_ack:
+                    # data = msg.payload[:min(msg.length, bufsize)]
+                    data = packet[HEADER_LENGTH:]  # window size is not received! not 8+HEADER_LENGTH
+                    eof = msg.is_eof_set()
+                    self.rx_buffer.append((data, eof))
+                    # ack = RdtMessage(0x0, self.seq, self.seq_ack, ack=True)
+                    # self.sendto(ack.to_byte(), self._send_to)
+                    self.seq_ack = msg.seq + 1
+                    self.seq = msg.seq_ack
+            self.mutex.release()
 
 
 """

@@ -14,7 +14,7 @@ def main():
     echo = b''
     count = 1
     slice_size = 2048
-    blocking_send = True
+    blocking_send = False
     with open('alice_fake.txt', 'r') as f:
         data = f.read()
         encoded = data.encode()
@@ -48,6 +48,7 @@ def main():
                 reply = client.recv(slice_size)
                 echo += reply
 
+    print("end")
     client.close()
 
     '''

@@ -17,7 +17,7 @@ def main():
         conn, client_addr = server.accept()
         start = time.perf_counter()
         while True:
-            print(passage.decode())
+            # print(passage.decode())
             data = conn.recv(2048)
             if data:
                 passage += data
@@ -28,7 +28,9 @@ def main():
         make sure the following is reachable
         '''
         conn.close()
+        print(passage.decode())
         print(f'connection finished in {time.perf_counter() - start}s')
+        break
 
 
 if __name__ == '__main__':
