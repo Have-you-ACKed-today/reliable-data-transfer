@@ -21,6 +21,8 @@ def main():
             data = conn.recv(2048)
             if data:
                 passage += data
+                print("~passage: ", time.perf_counter() - start)
+                print(passage.decode())
                 conn.send(data)
             else:
                 break

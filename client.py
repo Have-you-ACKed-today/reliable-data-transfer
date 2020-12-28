@@ -12,10 +12,10 @@ def main():
     client.connect(('127.0.0.1', 9999))
 
     echo = b''
-    count = 1
+    count = 5
     slice_size = 2048
     blocking_send = False
-    with open('alice_fake.txt', 'r') as f:
+    with open('alice.txt', 'r') as f:
         data = f.read()
         encoded = data.encode()
         assert len(data) == len(encoded)
@@ -41,14 +41,17 @@ def main():
                 echo += reply
     else:
         print('transmit in mode B')
+        print(len(encoded))
         start = time.perf_counter()
         for i in range(count):
             client.send(encoded)
             while len(echo) < len(encoded) * (i + 1):
                 reply = client.recv(slice_size)
+                print(reply.decode())
                 echo += reply
+                print("echo length:", len(echo))
 
-    print("end")
+    print("client reaches the end")
     client.close()
 
     '''
