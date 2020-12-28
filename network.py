@@ -25,12 +25,13 @@ def corrupt(data: bytes) -> bytes:
 
 
 class Server(ThreadingUDPServer):
-    def __init__(self, addr, rate=None, delay=None, corrupt=None):
+    def __init__(self, addr, rate=None, delay=None, corrupt=None, loss=None):
         super().__init__(addr, None)
         self.rate = rate
         self.buffer = 0
         self.delay = delay
         self.corrupt = corrupt
+        self.loss = loss
 
     def verify_request(self, request, client_address):
         if self.buffer < 10:
@@ -51,15 +52,17 @@ class Server(ThreadingUDPServer):
         print(unpack(data[8:])[0].to_string())
         print(unpack(data[8:])[0].payload)
         corrupt_data = data[8:]
-        # if not unpack(data[8:])[0].is_syn_set() and random.randint(0, 1) == 1:
-        if random.random() < self.corrupt:
-            print('corrupt')
-            corrupt_data = corrupt(corrupt_data)
-        socket.sendto(addr_to_bytes(client_address) + corrupt_data, to)
+        if random.random() < self.loss:
+            print('loss')
+        else:
+            if random.random() < self.corrupt:
+                print('corrupt')
+                corrupt_data = corrupt(corrupt_data)
+            socket.sendto(addr_to_bytes(client_address) + corrupt_data, to)
 
 
 server_address = ('127.0.0.1', 12345)
 
 if __name__ == '__main__':
-    with Server(server_address, corrupt=0.05) as server:
+    with Server(server_address, corrupt=.0, loss=.0) as server:
         server.serve_forever()

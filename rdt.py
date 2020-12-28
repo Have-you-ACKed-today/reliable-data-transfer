@@ -29,7 +29,7 @@ class RDTSocket(UnreliableSocket):
 
     """
 
-    def __init__(self, rate=None, debug=False):
+    def __init__(self, rate=None, debug=True):
         super().__init__(rate=rate)
         self._rate = rate
         self._send_to = None
@@ -51,6 +51,7 @@ class RDTSocket(UnreliableSocket):
         self.send_thread = threading.Thread(target=self.send_function)
         self.recv_thread = threading.Thread(target=self.recv_function)
         self.rx_thread = threading.Thread(target=self.rx_function)
+        self.thread_list = [self.tx_thread, self.send_thread, self.rx_thread, self.recv_thread]
         self.connected = False
         self.closed = False
 
@@ -492,6 +493,9 @@ class RDTSocket(UnreliableSocket):
                 self.mutex.release()
                 break
             self.mutex.release()
+        for t in self.thread_list:
+            if t.is_alive():
+                t.join()
         if self._send_to:
             fin = RdtMessage(0x0, self.seq, self.seq_ack, fin=True)
             self.sendto(fin.to_byte(), self._send_to)
@@ -507,6 +511,7 @@ class RDTSocket(UnreliableSocket):
     def set_recv_from(self, recv_from):
         self._recv_from = recv_from
 
+    # a thread for all packing logic
     def tx_function(self):
         self.next_seq = self.seq
         if self.debug:
@@ -539,6 +544,7 @@ class RDTSocket(UnreliableSocket):
         if self.debug:
             print("Tx thread end")
 
+    # a thread for sending packets
     def send_function(self):
         if self.debug:
             print("Send thread start")
@@ -557,6 +563,7 @@ class RDTSocket(UnreliableSocket):
         if self.debug:
             print("Send thread end")
 
+    # a thread for receiving packet
     def recv_function(self):
         if self.debug:
             print("Recv thread start")
@@ -579,6 +586,7 @@ class RDTSocket(UnreliableSocket):
         if self.debug:
             print("Recv thread end")
 
+    # a thread for all unpacking logic
     def rx_function(self):
         if self.debug:
             print("Rx thread start")
@@ -601,8 +609,10 @@ class RDTSocket(UnreliableSocket):
                         self.seq = msg.seq_ack
                         if self.timer.is_alive() and self.seq == self.next_seq:
                             self.timer.cancel()
+                            # handle the third handshake
+                        if self.con_timer and self.con_timer.is_alive() and msg.seq_ack > 2:
+                            self.con_timer.cancel()
                         self.mutex.release()
-
                 elif msg.seq == self.seq_ack:
                     # data = msg.payload[:min(msg.length, bufsize)]
                     data = packet[HEADER_LENGTH:]  # window size is not received! not 8+HEADER_LENGTH
