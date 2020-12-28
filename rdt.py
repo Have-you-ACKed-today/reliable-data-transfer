@@ -9,8 +9,8 @@ import random
 
 PAYLOAD_SIZE = 1024
 WINDOW_SIZE = 8
-PACKET_SIZE = 8+HEADER_LENGTH + PAYLOAD_SIZE
-TIME_OUT = 2000
+PACKET_SIZE = 8 + HEADER_LENGTH + PAYLOAD_SIZE
+TIME_OUT = 1000
 
 
 ## our socket rdt
@@ -29,7 +29,7 @@ class RDTSocket(UnreliableSocket):
 
     """
 
-    def __init__(self, rate=None, debug=True):
+    def __init__(self, rate=None, debug=False):
         super().__init__(rate=rate)
         self._rate = rate
         self._send_to = None
@@ -51,10 +51,12 @@ class RDTSocket(UnreliableSocket):
         self.send_thread = threading.Thread(target=self.send_function)
         self.recv_thread = threading.Thread(target=self.recv_function)
         self.rx_thread = threading.Thread(target=self.rx_function)
+        self.connected = False
         self.closed = False
 
         self.is_sender = False
         self.mutex = threading.Lock()
+        self.con_timer = None
         self.timer = threading.Timer((TIME_OUT / 1000.0), self._timeout)
         #############################################################################
         #                             END OF YOUR CODE                              #
@@ -74,9 +76,8 @@ class RDTSocket(UnreliableSocket):
         # TODO: YOUR CODE HERE                                                      #
         #############################################################################
 
+        # 接收对方发来的syn包
         while True:
-            # 接收对方发来的syn包
-
             data, addr = self.recvfrom(PACKET_SIZE)
             if data is None:
                 continue
@@ -90,44 +91,54 @@ class RDTSocket(UnreliableSocket):
                 print('syn: ', p_syn.to_string())
                 print('data =', data[:20])
                 print('addr =', addr)
-
-            # 更新seq_ack
-            conn.seq_ack = p_syn.seq + 1
-
-            # 第二次握手
-            if self.debug:
-                print('handshake 2st')
-            conn.seq = random.randint(0x0001, 0xffff)
-            if self.debug:
-                conn.seq = 1
-            syn_ack = RdtMessage(flags=0x0, seq=conn.seq, seq_ack=conn.seq_ack, syn=True, ack=True)
-            self.sendto(syn_ack.to_byte(), addr)
-            if self.debug:
-                print('syn ack: ', syn_ack.to_string())
-
-            # 接收ack
-            if self.debug:
-                print('handshake 3rd')
-            while True:
-                data, addr = self.recvfrom(PACKET_SIZE)
-                if data is None:
-                    continue
-                p_ack, corrupt = unpack(data)
-                if not p_ack.is_ack_set():
-                    continue
-                if self.debug:
-                    print('ack: ', p_ack.to_string())
-
-                conn.seq = p_ack.seq_ack
-                conn.seq_ack = p_ack.seq + 1
-                break
-
-            conn._recv_from = conn._send_to = addr
-            conn.next_seq = conn.seq = conn.seq
-            if self.debug:
-                print('seq =', conn.seq, 'seq_ack =', conn.seq_ack)
-                print('handshake done')
             break
+
+        conn._recv_from = conn._send_to = addr
+        self._recv_from = self._send_to = addr
+
+        # 更新seq_ack
+        conn.seq_ack = p_syn.seq + 1
+
+        # 第二次握手
+        if self.debug:
+            print('handshake 2nd')
+        # conn.seq = random.randint(0x0001, 0xffff)
+        # if self.debug:
+        conn.seq = 1
+        syn_ack = RdtMessage(flags=0x0, seq=conn.seq, seq_ack=conn.seq_ack, syn=True, ack=True)
+        if self.debug:
+            print('syn ack: ', syn_ack.to_string())
+
+        self.window['syn_ack'] = syn_ack.to_byte()
+        self.sendto(syn_ack.to_byte(), addr)
+        self.set_connect_timer(type='syn_ack')
+
+        # 接收ack
+        if self.debug:
+            print('handshake 3rd')
+        while True:
+            data, addr = self.recvfrom(PACKET_SIZE)
+            if data is None:
+                continue
+            p_ack, corrupt = unpack(data)
+            if corrupt:
+                continue
+            if not p_ack.is_ack_set():
+                if p_ack.seq_ack < 2:
+                    continue
+            if self.debug:
+                print('ack: ', p_ack.to_string())
+            if self.con_timer.is_alive():
+                self.con_timer.cancel()
+
+            conn.seq = p_ack.seq_ack
+            conn.seq_ack = p_ack.seq + 1
+            break
+
+        conn.next_seq = conn.seq = conn.seq
+        if self.debug:
+            print('seq =', conn.seq, 'seq_ack =', conn.seq_ack)
+            print('handshake done')
 
         #####
         myaddr = self.getsockname()
@@ -155,6 +166,9 @@ class RDTSocket(UnreliableSocket):
         #############################################################################
         # raise NotImplementedError()
 
+        # 提前连上
+        self._send_to = self._recv_from = address
+
         if self.debug:
             print('handshake 1st')
         # 构造syn包
@@ -166,21 +180,32 @@ class RDTSocket(UnreliableSocket):
             print('syn: ', syn.to_string())
 
         # 第一次握手, syn=1
+        self.window['syn'] = syn.to_byte()
         self.sendto(syn.to_byte(), address)
+        self.set_connect_timer(type='syn')
 
         # 接收对方发来的syn包，只有报文头
         if self.debug:
             print('handshake 2nd')
-        data, addr = self.recvfrom(8 + HEADER_LENGTH)
-        if data is None:
-            print('warning: none')
-        p_syn_ack, corrupt = unpack(data)
-        if not (p_syn_ack.is_syn_set() and p_syn_ack.is_ack_set()):
-            print('warning: bad')
-        if self.debug:
-            print('syn ack: ', p_syn_ack.to_string())
-            print('data =', data)
-            print('addr =', addr)
+        while True:
+            data, addr = self.recvfrom(8 + HEADER_LENGTH)
+            if data is None:
+                print('warning: none')
+            p_syn_ack, corrupt = unpack(data)
+            if corrupt:
+                print('Waring: corrupt packet recv')
+                continue
+            if not (p_syn_ack.is_syn_set() and p_syn_ack.is_ack_set()):
+                print('warning: bad')
+                continue
+            else:
+                if self.con_timer.is_alive():
+                    self.con_timer.cancel()
+                if self.debug:
+                    print('syn ack: ', p_syn_ack.to_string())
+                    print('data =', data)
+                    print('addr =', addr)
+                break
 
         # 拆包，更新序列号
         self.seq = p_syn_ack.seq_ack
@@ -193,10 +218,12 @@ class RDTSocket(UnreliableSocket):
         ack = RdtMessage(flags=0x0, seq=self.seq, seq_ack=self.seq_ack, ack=True)
         if self.debug:
             print('ack: ', ack.to_string())
-        self.sendto(ack.to_byte(), address)
+
+        self.window['ack'] = ack.to_byte()
+        self.sendto(ack.to_byte(), addr)
+        self.set_connect_timer(type='ack')
 
         # 三次握手完成，client进入established状态
-        self._send_to = self._recv_from = addr
         self.next_seq = self.seq = self.seq + 1
         # todo：超时重传
 
@@ -211,6 +238,32 @@ class RDTSocket(UnreliableSocket):
         #############################################################################
         #                             END OF YOUR CODE                              #
         #############################################################################
+
+    def set_connect_timer(self, type):
+        timeout = self.gettimeout()
+        if timeout is None:
+            timeout = TIME_OUT
+        self.con_timer = threading.Timer((timeout / 1000.0), self.connect_timeout, args=[type])
+        self.con_timer.start()
+
+    def connect_timeout(self, type):
+        if type == 'syn':
+            print('resend syn')
+            self.mutex.acquire()
+            packet = self.window['syn']
+            self.mutex.release()
+        elif type == 'syn_ack':
+            print('resend syn_ack')
+            self.mutex.acquire()
+            packet = self.window['syn_ack']
+            self.mutex.release()
+        else:
+            print('resend ack')
+            self.mutex.acquire()
+            packet = self.window['ack']
+            self.mutex.release()
+        self.sendto(packet, self._send_to)
+        self.set_connect_timer(type)
 
     def _recv(self):
         data = None
@@ -285,8 +338,8 @@ class RDTSocket(UnreliableSocket):
         self.mutex.acquire()
         waited = False
         while True:
-            if self.debug:
-                print("recv...")
+            # if self.debug:
+            #     print("recv...")
             if len(self.rx_buffer) != 0 and len(data) + len(self.rx_buffer[0]) <= bufsize:
                 raw, eof = self.rx_buffer.pop(0)
                 data += raw
@@ -332,10 +385,11 @@ class RDTSocket(UnreliableSocket):
             print('resend (', self.seq, self.next_seq, ')', 'at', datetime.datetime.now())
             for i in range(self.seq, self.next_seq):
                 self.mutex.acquire()
-                packet = self.window[i]
+                data = self.window[i]
+                packet = RdtMessage(flags=0x0, seq=i, seq_ack=self.seq_ack, payload=data.decode())
                 self.mutex.release()
-                self.sendto(packet, self._send_to)
-                # print('resend packet: ', packet.to_string())
+                self.sendto(packet.to_byte(), self._send_to)
+                print('resend packet: ', packet.to_string())
             self._set_timer()
 
     def _recv_ack(self):
@@ -458,7 +512,7 @@ class RDTSocket(UnreliableSocket):
         if self.debug:
             print("Tx thread start")
         while True:
-            time.sleep(0.005)
+            time.sleep(0.001)
             if self.closed:
                 break
             if len(self.tx_buffer) > 0:
@@ -489,7 +543,7 @@ class RDTSocket(UnreliableSocket):
         if self.debug:
             print("Send thread start")
         while True:
-            time.sleep(0.005)
+            time.sleep(0.001)
             if self.closed:
                 break
             if len(self.send_buffer) > 0:
@@ -507,7 +561,7 @@ class RDTSocket(UnreliableSocket):
         if self.debug:
             print("Recv thread start")
         while True:
-            time.sleep(0.005)
+            time.sleep(0.001)
             if self.closed:
                 break
             packet, addr = self.recvfrom(PACKET_SIZE)
@@ -529,7 +583,7 @@ class RDTSocket(UnreliableSocket):
         if self.debug:
             print("Rx thread start")
         while True:
-            time.sleep(0.005)
+            time.sleep(0.001)
             if self.closed:
                 break
             if len(self.recv_buffer) > 0:
@@ -539,33 +593,34 @@ class RDTSocket(UnreliableSocket):
                 packet = self.recv_buffer.pop(0)
                 self.mutex.release()
                 msg, corrupt = unpack(packet)
-                if not corrupt:
-                    if msg.is_ack_set():
-                        if msg.seq_ack > self.seq:
-                            self.mutex.acquire()
-                            self.seq = msg.seq_ack
-                            if self.timer.is_alive() and self.seq == self.next_seq:
-                                self.timer.cancel()
-                            self.mutex.release()
-
-                    elif msg.seq == self.seq_ack:
-                        # data = msg.payload[:min(msg.length, bufsize)]
-                        data = packet[HEADER_LENGTH:]  # window size is not received! not 8+HEADER_LENGTH
-                        eof = msg.is_eof_set()
-
+                if corrupt:
+                    continue
+                if msg.is_ack_set():
+                    if msg.seq_ack > self.seq:
                         self.mutex.acquire()
-                        if len(data) > 0:
-                            self.rx_buffer.append((data, eof))
-                        self.seq_ack += 1
                         self.seq = msg.seq_ack
                         if self.timer.is_alive() and self.seq == self.next_seq:
                             self.timer.cancel()
                         self.mutex.release()
 
-                        # if there's no sending data now, just tell him I got it
-                        if len(self.send_buffer) == 0 and len(self.tx_buffer) == 0:
-                            packet = RdtMessage(0x0, self.seq, self.seq_ack, ack=True)
-                            self.sendto(packet.to_byte(), self._send_to)
+                elif msg.seq == self.seq_ack:
+                    # data = msg.payload[:min(msg.length, bufsize)]
+                    data = packet[HEADER_LENGTH:]  # window size is not received! not 8+HEADER_LENGTH
+                    eof = msg.is_eof_set()
+
+                    self.mutex.acquire()
+                    if len(data) > 0:
+                        self.rx_buffer.append((data, eof))
+                    self.seq_ack += 1
+                    self.seq = msg.seq_ack
+                    if self.timer.is_alive() and self.seq == self.next_seq:
+                        self.timer.cancel()
+                    self.mutex.release()
+
+                    # if there's no sending data now, just tell him I got it
+                    if len(self.send_buffer) == 0 and len(self.tx_buffer) == 0:
+                        packet = RdtMessage(0x0, self.seq, self.seq_ack, ack=True)
+                        self.sendto(packet.to_byte(), self._send_to)
 
         if self.debug:
             print("Rx thread end")

@@ -22,7 +22,7 @@ def main():
             if data:
                 passage += data
                 print("~passage: ", time.perf_counter() - start)
-                print(passage.decode())
+                # print(passage.decode())
                 conn.send(data)
             else:
                 break

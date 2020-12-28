@@ -51,14 +51,15 @@ class Server(ThreadingUDPServer):
         print(unpack(data[8:])[0].to_string())
         print(unpack(data[8:])[0].payload)
         corrupt_data = data[8:]
-        if not unpack(data[8:])[0].is_syn_set() and random.randint(0, 8) == 1:
+        # if not unpack(data[8:])[0].is_syn_set() and random.randint(0, 1) == 1:
+        if random.random() < self.corrupt:
             print('corrupt')
-            # corrupt_data = corrupt(corrupt_data)
+            corrupt_data = corrupt(corrupt_data)
         socket.sendto(addr_to_bytes(client_address) + corrupt_data, to)
 
 
 server_address = ('127.0.0.1', 12345)
 
 if __name__ == '__main__':
-    with Server(server_address) as server:
+    with Server(server_address, corrupt=0.05) as server:
         server.serve_forever()

@@ -12,7 +12,7 @@ def main():
     client.connect(('127.0.0.1', 9999))
 
     echo = b''
-    count = 5
+    count = 1
     slice_size = 2048
     blocking_send = False
     with open('alice.txt', 'r') as f:
@@ -47,7 +47,7 @@ def main():
             client.send(encoded)
             while len(echo) < len(encoded) * (i + 1):
                 reply = client.recv(slice_size)
-                print(reply.decode())
+                # print(reply.decode())
                 echo += reply
                 print("echo length:", len(echo))
 

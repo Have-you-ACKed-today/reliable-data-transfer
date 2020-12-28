@@ -12,9 +12,10 @@ class RdtMessage(object):
 
         """
         constructor of RdtMessage
-        :param flags: 4 bits reserved, 1 bit eof, 1 bit syn, 1 bit fin, 1 bit ack, 1 byte
+        :param flags: 4 bits reserved, 1 bit eof, 1 bit syn, 1 bit fin, 1 bit ack, 1 byte in total
         :param seq: sequence number, 4 bytes
         :param seq_ack: ack number, 4 bytes
+        :param length: length, 4 bytes
         :param checksum: checksum, 1 byte
         :param payload: data to be transfer, LEN bytes (string)
         :returns RdtMessage
