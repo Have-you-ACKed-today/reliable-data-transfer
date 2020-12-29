@@ -34,10 +34,11 @@ class Server(ThreadingUDPServer):
         self.loss = loss
 
     def verify_request(self, request, client_address):
-        if self.buffer < 10:
+        if self.buffer < 100000:
             self.buffer += 1
             return True
         else:
+            print("BOOM!!!")
             return False
 
     def finish_request(self, request, client_address):
