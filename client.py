@@ -7,7 +7,7 @@ from difflib import Differ
 
 # @pysnooper.snoop()
 def main():
-    client = RDTSocket()
+    client = RDTSocket(rate=10240)
     # client = socket(AF_INET, SOCK_STREAM) # check what python socket does
     client.connect(('127.0.0.1', 9999))
 

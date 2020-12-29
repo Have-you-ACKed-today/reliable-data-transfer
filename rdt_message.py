@@ -2,8 +2,8 @@ import struct
 from utils import calc_checksum
 
 # rdt_format is for the struct package to split the bytes easily
-rdt_format = '!BLLLB'
-HEADER_LENGTH = 14
+rdt_format = '!BHHHH'
+HEADER_LENGTH = 9
 
 
 class RdtMessage(object):
@@ -13,10 +13,10 @@ class RdtMessage(object):
         """
         constructor of RdtMessage
         :param flags: 4 bits reserved, 1 bit eof, 1 bit syn, 1 bit fin, 1 bit ack, 1 byte in total
-        :param seq: sequence number, 4 bytes
-        :param seq_ack: ack number, 4 bytes
-        :param length: length, 4 bytes
-        :param checksum: checksum, 1 byte
+        :param seq: sequence number, 2 bytes
+        :param seq_ack: ack number, 2 bytes
+        :param length: length, 2 bytes
+        :param checksum: checksum, 2 byte
         :param payload: data to be transfer, LEN bytes (string)
         :returns RdtMessage
         """
@@ -93,6 +93,7 @@ def unpack(bytes_message: bytes):
 
     real_checksum = calc_checksum(
         struct.pack(rdt_format, flags, seq, seq_ack, length, 0) + bytes_message[HEADER_LENGTH:])
+    # print(hex(real_checksum))
     # assert checksum == real_checksum
     corrupt = not checksum == real_checksum
 
@@ -111,8 +112,9 @@ def make_ack(seq_ack):
 
 # this is just for testing
 if __name__ == "__main__":
-    b = b'\x04\x00\x00\x00\x10\x00\x00\x00\x11\x00\x00\x00\x05\x62\x48\x45\x4c\x4c\x4f'
-    packet = unpack(b)
+    b = b'\x05\x00\x10\x00\x11\x00\x05\xf4\x1d\x48\x45\x4c\x4c\x4f\x4f'
+    packet, corrupt = unpack(b)
+    print(corrupt)
     if packet.is_syn_set():
         print("syn set")
     if packet.is_ack_set():

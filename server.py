@@ -6,7 +6,7 @@ import time
 
 @pysnooper.snoop()
 def main():
-    server = RDTSocket()
+    server = RDTSocket(rate=10240)
     # server = socket(AF_INET, SOCK_STREAM) # check what python socket does
     server.bind(('127.0.0.1', 9999))
     # server.listen(0) # check what python socket does

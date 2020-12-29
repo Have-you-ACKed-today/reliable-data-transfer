@@ -1,10 +1,14 @@
 
 def calc_checksum(payload):
     sum = 0
-    for byte in payload:
-        sum += byte
-    sum = -(sum % 256)
-    return sum & 0xFF
+    for i in range(len(payload)):
+        byte = payload[i]
+        if i % 2 == 0:
+            sum += (byte << 8)
+        else:
+            sum += byte
+    sum = -(sum % 65536)
+    return sum & 0xFFFF
 
 
 def make_data_parts(data, part_size):

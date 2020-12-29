@@ -8,9 +8,9 @@ import time
 import random
 
 PAYLOAD_SIZE = 1024
-WINDOW_SIZE = 8
+WINDOW_SIZE = 16
 PACKET_SIZE = 8 + HEADER_LENGTH + PAYLOAD_SIZE
-TIME_OUT = 1000
+TIME_OUT = 1200
 
 
 ## our socket rdt
@@ -29,7 +29,7 @@ class RDTSocket(UnreliableSocket):
 
     """
 
-    def __init__(self, rate=None, debug=True):
+    def __init__(self, rate=None, debug=False):
         super().__init__(rate=rate)
         self._rate = rate
         self._send_to = None
