@@ -9,7 +9,7 @@ import random
 
 PAYLOAD_SIZE = 2048
 PACKET_SIZE = 8 + HEADER_LENGTH + PAYLOAD_SIZE
-MIN_WINDOW = 4
+MIN_WINDOW = 2
 
 
 ## our socket rdt
@@ -63,7 +63,7 @@ class RDTSocket(UnreliableSocket):
         self.con_timer = None
         self.timer_list = {}
 
-        self.time_out = 2000
+        self.time_out = 3000
         self.window_size = MIN_WINDOW
         #############################################################################
         #                             END OF YOUR CODE                              #
@@ -327,7 +327,7 @@ class RDTSocket(UnreliableSocket):
             # print(self.seq, self.next_seq)
             print('resend (', cur_seq, ')', 'at', datetime.datetime.now())
         self.mutex.acquire()
-        self.window_size = min(MIN_WINDOW, self.window_size * 0.5)
+        self.window_size = max(MIN_WINDOW, self.window_size * 0.5)
         data = self.window[cur_seq][0]
         packet = RdtMessage(flags=0x0, seq=cur_seq, seq_ack=self.seq_ack, payload=data.decode())
         self.mutex.release()
@@ -414,8 +414,6 @@ class RDTSocket(UnreliableSocket):
                 break
             time.sleep(0.001)
             if len(self.tx_buffer) > 0:
-                self.window_size += 1 / self.window_size / 8
-                # print(self.window_size)
                 if self.next_seq < self.seq + self.window_size:
                     if self.debug:
                         print("data get from tx_buffer")
@@ -502,6 +500,8 @@ class RDTSocket(UnreliableSocket):
                     print("data get from recv_buffer")
                 self.mutex.acquire()
                 packet = self.recv_buffer.pop(0)
+                self.window_size += 1 / self.window_size / 8
+                print(self.window_size)
                 self.mutex.release()
                 msg, corrupt = unpack(packet)
                 if corrupt:
@@ -521,9 +521,10 @@ class RDTSocket(UnreliableSocket):
                         self.acked_send_message[msg.seq_ack]
                     except KeyError:
                         RTT = (time.time() - self.window[msg.seq_ack][1]) * 1000
+                        print("current rtt is ", RTT)
                         self.time_out = self.time_out * 0.75 + RTT * 0.25
-                        self.time_out = min(self.time_out, 4000)
-                        self.time_out = max(self.time_out, 1500)
+                        self.time_out = min(self.time_out, 6000)
+                        self.time_out = max(self.time_out, 3000)
                         print("current time out is", self.time_out)
                     self.acked_send_message[msg.seq_ack] = True
                     while True:
@@ -565,7 +566,7 @@ class RDTSocket(UnreliableSocket):
                         self.mutex.acquire()
                         try:
                             if self.acked_recv_message[msg.seq]:
-                                self.window_size = min(MIN_WINDOW, self.window_size * 0.8)
+                                self.window_size = max(MIN_WINDOW, self.window_size * 0.8)
                             else:
                                 self.acked_recv_message[msg.seq] = (data, eof)
                         except KeyError:
